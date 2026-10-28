@@ -1,0 +1,13 @@
+No_Terminales: S E L
+Terminales: id num ; := print ( ) + ,
+Inicial: S
+
+S -> S ; S
+S -> id := E
+S -> print ( L )
+E -> id
+E -> num
+E -> E + E
+E -> ( S , E )
+L -> E
+L -> L , E

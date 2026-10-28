@@ -1,0 +1,9 @@
+No_Terminales: E T F E' T' S
+Terminales: + * ( ) id
+Inicial: E
+
+E -> T E'
+E' -> + T E' | ε
+T -> F T'
+T' -> * F T' | ε
+F -> ( E ) | id

@@ -1,0 +1,11 @@
+No_Terminales: D L T
+Terminales: , id float int ;
+Inicial: D
+
+D -> T L ;
+L -> id L
+L -> , id L
+L -> ε
+T -> float
+T -> int 
+T -> ε

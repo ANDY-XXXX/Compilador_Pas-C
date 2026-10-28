@@ -1,0 +1,6 @@
+# Como estos son declarados desde raiz ignora los archivos sin importar en que nivel se encuentran
+
+# Ignora todos lo archivos nombrados como __pycache__ 
+__pycache__/
+# Ignora todos lo archivos nombrados como .venv
+.venv/

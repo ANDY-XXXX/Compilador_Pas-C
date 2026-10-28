@@ -1,0 +1,11 @@
+No_Terminales: E' E T F
+Terminales: + * ( ) id $
+Inicial: E'
+
+E' -> E $
+E -> E + T
+E -> T
+T -> T * F
+T -> F
+F -> ( E )
+F -> id
