@@ -1,4 +1,4 @@
-int id;
-float id;
-float id, id, id;
-int id, id;
+int id ;
+float id ;
+float id , id , id ;
+int id , id ;
