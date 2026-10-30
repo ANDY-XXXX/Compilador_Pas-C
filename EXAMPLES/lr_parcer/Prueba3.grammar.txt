@@ -1,0 +1,12 @@
+No_Terminales: S' S T V V'
+Terminales: ; [ ] id nint int char float $
+Inicial: S'
+
+S' -> S $
+S -> T V ;
+V -> id V'
+V' -> [ nint ] V'
+V' -> ε
+T -> int
+T -> char
+T -> float
