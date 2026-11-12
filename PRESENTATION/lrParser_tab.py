@@ -16,18 +16,18 @@ from LOGIC.syntactic_analysis import (
 from LOGIC.python_lexer.analyzer import analyze_code
 from .common import Task
 from .results_window import ResultsWindow
+from .line_numbered_editor import LineNumberedEditor
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Carpetas candidatas para abrir el diálogo por defecto
 _FOLDER_CANDIDATES = [
     ROOT / "EXAMPLES" / "lr_parser",
     ROOT / "EXAMPLES" / "lr_parcer",
+    ROOT / "EXAMPLES" / "pythonLexer",
     ROOT / "EXAMPLES",
 ]
 
-# Convención de sufijos para el auto-pareo
 GRAMMAR_SUFFIXES = (".gram.txt", ".grammar.txt", ".gram", ".txt")
 TOKEN_SUFFIXES = (
     ".tokens.txt", "_tokens.txt", ".tok.txt",
@@ -36,7 +36,6 @@ TOKEN_SUFFIXES = (
 
 
 def _find_stem(name, suffixes):
-    """Devuelve el nombre sin el sufijo, o None si no coincide."""
     lower = name.lower()
     for suffix in suffixes:
         if lower.endswith(suffix):
@@ -49,7 +48,6 @@ def _is_token_file(path: Path) -> bool:
 
 
 def _candidates_grammar(token_path: Path):
-    """Dado un archivo de tokens, gramáticas pareja en la misma carpeta."""
     stem = _find_stem(token_path.name, TOKEN_SUFFIXES)
     if stem is None:
         return []
@@ -62,7 +60,6 @@ def _candidates_grammar(token_path: Path):
 
 
 def _candidates_tokens(grammar_path: Path):
-    """Dado un archivo de gramática, tokens pareja en la misma carpeta."""
     stem = _find_stem(grammar_path.name, GRAMMAR_SUFFIXES)
     if stem is None:
         stem = grammar_path.stem
@@ -81,6 +78,12 @@ def _default_folder() -> Path:
     return ROOT / "EXAMPLES"
 
 
+def _detect_mode(path: Path) -> str:
+    if path.suffix.lower() == ".c":
+        return "c"
+    return "pascal"
+
+
 class LRParserTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,6 +97,7 @@ class LRParserTab(QWidget):
         self.grammar_path = None
         self.tokens_path = None
         self.source_path = None
+        self.source_mode = "pascal"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 18, 24, 18)
@@ -104,16 +108,16 @@ class LRParserTab(QWidget):
         layout.addWidget(title)
 
         hint = QLabel(
-            "Carga un caso de prueba: la aplicación auto-empareja la "
-            "gramática y la tira de tokens por nombre de archivo "
-            "(ej. Prueba1.grammar.txt ↔ Prueba1.tokens.txt). Después elige "
-            "la entrada (programa Pascal o tira de tokens) y analiza."
+            "Carga un caso de prueba: la aplicación auto-empareja "
+            "la gramática y la tira de tokens por nombre de archivo "
+            "(ej. Prueba1.grammar.txt ↔ Prueba1.tokens.txt). Después "
+            "elige la entrada (programa fuente o tira de tokens) y analiza."
         )
         hint.setObjectName("subheading")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
-        # ---------- Caso de prueba (par de archivos) ----------
+        # ---------- Caso de prueba ----------
         pair_group = QGroupBox("Caso de prueba")
         pair_layout = QVBoxLayout(pair_group)
 
@@ -126,21 +130,13 @@ class LRParserTab(QWidget):
         pair_layout.addWidget(self.tokens_status)
 
         pair_buttons = QHBoxLayout()
-        self.load_pair_button = QPushButton("Cargar Gramatica y L.Tokens")
+        self.load_pair_button = QPushButton("Cargar Gramática y T. Tokens")
         self.load_pair_button.setToolTip(
-            "Elige gramática o tokens. Si existe el par "
-            "(mismo nombre + sufijo), se carga automáticamente."
+            "Elige gramática o tokens. Si existe el par (mismo "
+            "nombre + sufijo), se carga automáticamente."
         )
         self.load_pair_button.clicked.connect(self.load_any)
         pair_buttons.addWidget(self.load_pair_button)
-
-        # self.load_grammar_button = QPushButton("Solo gramática")
-        # self.load_grammar_button.clicked.connect(self.load_grammar_only)
-        # pair_buttons.addWidget(self.load_grammar_button)
-
-        # self.load_tokens_button = QPushButton("Solo tokens")
-        # self.load_tokens_button.clicked.connect(self.load_tokens_only)
-        # pair_buttons.addWidget(self.load_tokens_button)
 
         self.clear_pair_button = QPushButton("Limpiar")
         self.clear_pair_button.setObjectName("secondary")
@@ -153,33 +149,35 @@ class LRParserTab(QWidget):
         # ---------- Vista previa de la gramática ----------
         self.grammar_preview = QPlainTextEdit()
         self.grammar_preview.setReadOnly(True)
-        self.grammar_preview.setMaximumHeight(150)
+        self.grammar_preview.setMaximumHeight(140)
         layout.addWidget(self.grammar_preview)
 
         # ---------- Entrada ----------
         self.input_tabs = QTabWidget()
 
-        # Tab Pascal
-        pascal_widget = QWidget()
-        pascal_layout = QVBoxLayout(pascal_widget)
-        pascal_layout.setContentsMargins(8, 8, 8, 8)
+        # Tab código fuente
+        source_widget = QWidget()
+        source_layout = QVBoxLayout(source_widget)
+        source_layout.setContentsMargins(8, 8, 8, 8)
 
-        pascal_controls = QHBoxLayout()
-        self.open_pascal_button = QPushButton("Abrir Pascal")
-        self.open_pascal_button.clicked.connect(self.open_pascal)
-        pascal_controls.addWidget(self.open_pascal_button)
-        pascal_controls.addStretch()
-        pascal_layout.addLayout(pascal_controls)
+        source_controls = QHBoxLayout()
+        self.open_source_button = QPushButton("Abrir código fuente")
+        self.open_source_button.clicked.connect(self.open_source)
+        source_controls.addWidget(self.open_source_button)
+        self.source_mode_label = QLabel("Modo: pascal (auto)")
+        self.source_mode_label.setObjectName("subheading")
+        source_controls.addWidget(self.source_mode_label)
+        source_controls.addStretch()
+        source_layout.addLayout(source_controls)
 
-        self.pascal_editor = QPlainTextEdit()
-        self.pascal_editor.setFont(QFont("Monospace", 11))
-        self.pascal_editor.setPlaceholderText(
-            "program Demo;\nvar x: integer;\nbegin\n  x := 1 + 2;\nend."
+        self.source_editor = LineNumberedEditor()
+        self.source_editor.setPlaceholderText(
+            "int main(){\nint a;\n}"
         )
-        pascal_layout.addWidget(self.pascal_editor, 1)
-        self.input_tabs.addTab(pascal_widget, "Programa Pascal")
+        source_layout.addWidget(self.source_editor, 1)
+        self.input_tabs.addTab(source_widget, "Programa fuente")
 
-        # Tab Tokens -------------------------------------------------
+        # Tab tokens
         tokens_widget = QWidget()
         tokens_layout = QVBoxLayout(tokens_widget)
         tokens_layout.setContentsMargins(8, 8, 8, 8)
@@ -195,7 +193,7 @@ class LRParserTab(QWidget):
         self.tokens_editor.setFont(QFont("Monospace", 11))
         self.tokens_editor.setPlaceholderText(
             "Un terminal por línea o separados por espacios:\n"
-            "id + id * id"
+            "int main ( ) { int id ; }"
         )
         tokens_layout.addWidget(self.tokens_editor, 1)
         self.input_tabs.addTab(tokens_widget, "Tira de tokens")
@@ -218,7 +216,7 @@ class LRParserTab(QWidget):
     def busy(self):
         return self.task is not None
 
-    # Carga de archivos (par / individuales)
+    # Carga de archivos
 
     def load_any(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -236,17 +234,6 @@ class LRParserTab(QWidget):
             if self._load_grammar_file(path):
                 self._try_load_tokens_pair(path)
 
-    def load_grammar_only(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir gramática", str(_default_folder()),
-            "Texto (*.txt);;Todos (*)",
-        )
-        if not path:
-            return
-        path = Path(path)
-        if self._load_grammar_file(path):
-            self._try_load_tokens_pair(path)
-
     def load_tokens_only(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Abrir tira de tokens", str(_default_folder()),
@@ -259,7 +246,6 @@ class LRParserTab(QWidget):
             if self._load_tokens_file(path):
                 self._try_load_grammar_pair(path)
         else:
-            # El usuario eligió una gramática por accidente: cargar como par
             if self._load_grammar_file(path):
                 self._try_load_tokens_pair(path)
 
@@ -330,11 +316,10 @@ class LRParserTab(QWidget):
                 return
         self.status.setText(
             f"Gramática cargada: {grammar_path.name}. "
-            f"No se encontró tira de tokens pareja "
-            f"({grammar_path.stem}.tokens.txt)."
+            f"No se encontró tira de tokens pareja."
         )
 
-    # ---------- Tira de tokens ----------
+    # ---------- Tokens ----------
 
     def _load_tokens_file(self, path: Path) -> bool:
         path = Path(path)
@@ -371,26 +356,34 @@ class LRParserTab(QWidget):
             f"No se encontró gramática pareja."
         )
 
-    # ---------- Pascal suelto ----------
+    # ---------- Código fuente ----------
 
-    def open_pascal(self):
-        folder = ROOT / "EXAMPLES" / "pythonLexer"
+    def open_source(self):
+        folder = _default_folder()
         path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Pascal", str(folder),
-            "Pascal (*.pas);;Todos (*)",
+            self, "Abrir código fuente", str(folder),
+            "Código (*.pas *.c *.txt);;"
+            "Pascal (*.pas);;C (*.c);;Todos (*)",
         )
         if not path:
             return
+        path = Path(path)
         try:
             text = read_text(path)
-            self.pascal_editor.setPlainText(text)
-            self.source_path = Path(path)
-            self.input_tabs.setCurrentIndex(0)
-            self.status.setText(f"Programa cargado: {path}")
         except (OSError, UnicodeError) as error:
             QMessageBox.warning(self, "No se pudo leer", str(error))
+            return
 
-    # Construcción de la tabla
+        self.source_path = path
+        self.source_mode = _detect_mode(path)
+        self.source_editor.setPlainText(text)
+        self.source_mode_label.setText(
+            f"Modo: {self.source_mode} · {path.name}"
+        )
+        self.input_tabs.setCurrentIndex(0)
+        self.status.setText(f"Código fuente cargado: {path}")
+
+    # Tabla LR
 
     def _build_table(self):
         if self.grammar is None:
@@ -444,16 +437,15 @@ class LRParserTab(QWidget):
         table = self.table
 
         if self.input_tabs.currentIndex() == 0:
-            code = self.pascal_editor.toPlainText()
+            code = self.source_editor.toPlainText()
             if not code.strip():
-                self.status.setText(
-                    "Abre o escribe un programa antes de analizar."
-                )
+                self.status.setText("Carga o escribe código fuente.")
                 return
+            mode = self.source_mode
             self._set_busy(True)
             self.status.setText("Tokenizando y analizando…")
             self.task = Task(
-                lambda: self._run_pascal(grammar, table, code), self
+                lambda: self._run_source(grammar, table, code, mode), self
             )
         else:
             raw = self.tokens_editor.toPlainText()
@@ -472,8 +464,8 @@ class LRParserTab(QWidget):
         self.task.start()
 
     @staticmethod
-    def _run_pascal(grammar, table, code):
-        lex_result = analyze_code(code)
+    def _run_source(grammar, table, code, mode):
+        lex_result = analyze_code(code, mode=mode)
         raw_tokens = [
             t for t in lex_result["tokens"] if t.type.name != "EOF"
         ]
@@ -485,14 +477,6 @@ class LRParserTab(QWidget):
         unmapped = [
             (lex, term) for lex, term in mapped if term not in valid
         ]
-        if unmapped:
-            sample = ", ".join(
-                f"'{lex}'→'{term}'" for lex, term in unmapped[:5]
-            )
-            raise ValueError(
-                f"{len(unmapped)} token(s) sin terminal equivalente "
-                f"({sample}{'…' if len(unmapped) > 5 else ''})."
-            )
 
         parser = LRParser(table, mapped)
         result = parser.parse()
@@ -508,6 +492,7 @@ class LRParserTab(QWidget):
             "tokens": token_rows,
             "parse": result,
             "lexer_errors": lex_result["errors"],
+            "unmapped": unmapped,
         }
 
     @staticmethod
@@ -538,6 +523,7 @@ class LRParserTab(QWidget):
             "tokens": token_rows,
             "parse": result,
             "lexer_errors": [],
+            "unmapped": [],
         }
 
     def show_result(self, payload):
@@ -557,11 +543,35 @@ class LRParserTab(QWidget):
             if self.table.conflicts:
                 results["Conflictos"] = self.table.conflict_rows()
 
-        if payload["lexer_errors"]:
-            error_rows = [["Línea", "Descripción"]]
-            for e in payload["lexer_errors"]:
-                error_rows.append([e["line"], e["description"]])
-            results["Errores léxicos"] = error_rows
+        # Tabla de errores combinada: léxicos + tokens sin mapear + sintácticos
+        error_rows = [["Tipo", "Línea / Estado", "Descripción"]]
+
+        for err in payload["lexer_errors"]:
+            error_rows.append([
+                "Léxico",
+                err.get("line", ""),
+                err.get("description", ""),
+            ])
+
+        for lex, term in payload["unmapped"]:
+            error_rows.append([
+                "Mapeo",
+                "",
+                f"El lexema '{lex}' no tiene un terminal válido "
+                f"en la gramática (se intentó '{term}').",
+            ])
+
+        if not parse_result.accepted and parse_result.error:
+            error_rows.append([
+                "Sintáctico",
+                "Corrida",
+                parse_result.error,
+            ])
+
+        if len(error_rows) == 1:
+            error_rows.append(["—", "—", "Sin errores."])
+
+        results["Tabla de errores"] = error_rows
 
         if parse_result.accepted:
             subtitle = "Cadena ACEPTADA · Análisis sintáctico exitoso."
@@ -605,10 +615,8 @@ class LRParserTab(QWidget):
 
     def _set_busy(self, busy):
         self.load_pair_button.setEnabled(not busy)
-        # self.load_grammar_button.setEnabled(not busy)
-        # self.load_tokens_button.setEnabled(not busy)
         self.clear_pair_button.setEnabled(not busy)
-        self.open_pascal_button.setEnabled(not busy)
+        self.open_source_button.setEnabled(not busy)
         self.open_tokens_button.setEnabled(not busy)
         self.analyze_button.setEnabled(
             not busy and self.table is not None

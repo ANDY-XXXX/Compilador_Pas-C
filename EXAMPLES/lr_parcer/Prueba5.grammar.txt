@@ -1,0 +1,76 @@
+No_Terminales: P' P D V Ids Rangos Rango Tipo L S M U Ramas Rama C R Args E T F
+Terminales: program var begin end . id ; : array [ ] of , .. num integer real char boolean string if then else case while do for to repeat until break continue and true false write writeln readln := = >= <= > ( ) + - * / literalCad literalCar $
+Inicial: P'
+
+P' -> P $
+P -> program id ; begin end .
+P -> program id ; begin L end .
+P -> program id ; var D begin end .
+P -> program id ; var D begin L end .
+D -> D V
+D -> V
+V -> Ids : Tipo ;
+V -> Ids : array [ Rangos ] of Tipo ;
+Ids -> Ids , id
+Ids -> id
+Rangos -> Rangos , Rango
+Rangos -> Rango
+Rango -> num .. num
+Tipo -> integer
+Tipo -> real
+Tipo -> char
+Tipo -> boolean
+Tipo -> string
+L -> L ; S
+L -> L ;
+L -> S
+S -> M
+S -> U
+M -> if C then M else M
+M -> id := E
+M -> id [ E ] := E
+M -> write ( Args )
+M -> writeln ( Args )
+M -> readln ( id )
+M -> break
+M -> continue
+M -> begin L end
+M -> case E of Ramas end
+M -> case E of Ramas else L end
+M -> repeat L until C
+M -> while C do M
+M -> for id := E to E do M
+U -> if C then S
+U -> if C then M else U
+U -> while C do U
+U -> for id := E to E do U
+Ramas -> Ramas Rama
+Ramas -> Rama
+Rama -> num : S ;
+C -> C and R
+C -> R
+R -> E = E
+R -> E >= E
+R -> E <= E
+R -> E > E
+R -> ( E = E )
+R -> ( E >= E )
+R -> ( E <= E )
+R -> ( E > E )
+R -> E
+Args -> Args , E
+Args -> E
+E -> E + T
+E -> E - T
+E -> T
+T -> T * F
+T -> T / F
+T -> F
+F -> ( E )
+F -> id
+F -> id [ E ]
+F -> num
+F -> literalCad
+F -> literalCar
+F -> true
+F -> false

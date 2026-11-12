@@ -10,10 +10,11 @@ from .token_type import (
 
 
 class Lexer:
-    # Scans Pascal source text and produces tokens one at a time.
+    # Scans source text and produces tokens one at a time.
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, mode: str = "pascal"):
         self.text = text.replace("\r\n", "\n").replace("\r", "\n")
+        self.mode = mode
         self.position = 0
         self.line = 1
         self.column = 1
@@ -42,17 +43,13 @@ class Lexer:
 
         self.position += 1
 
-    # ------------------------------------------------------------------
     # Whitespace and comments
-    # ------------------------------------------------------------------
 
     def skip_whitespace(self) -> None:
-        """Skips spaces, tabs and newlines."""
         while self.current_char() is not None and self.current_char().isspace():
             self.advance()
 
-    def skip_comment(self) -> None:
-        """Skips a block comment, either { ... } or (* ... *)."""
+    def skip_block_comment_pascal(self) -> None:
         start_line = self.line
         start_col = self.column
 
@@ -70,7 +67,6 @@ class Lexer:
             if closing == "}" and self.current_char() == "}":
                 self.advance()
                 return
-
             if (
                 closing == "*)"
                 and self.current_char() == "*"
@@ -79,7 +75,6 @@ class Lexer:
                 self.advance()
                 self.advance()
                 return
-
             self.advance()
 
         self.errors.append({
@@ -88,12 +83,28 @@ class Lexer:
             "description": f"Error: unclosed comment; missing {closing}",
         })
 
-    # ------------------------------------------------------------------
+    def skip_block_comment_c(self) -> None:
+        start_line = self.line
+        start_col = self.column
+        self.advance()  # /
+        self.advance()  # *
+
+        while self.current_char() is not None:
+            if self.current_char() == "*" and self.peek() == "/":
+                self.advance()
+                self.advance()
+                return
+            self.advance()
+
+        self.errors.append({
+            "line": start_line,
+            "column": start_col,
+            "description": "Error: unclosed comment; missing */",
+        })
+
     # Lexeme recognition
-    # ------------------------------------------------------------------
 
     def read_identifier(self) -> Token:
-        """Reads an identifier or reserved word."""
         start_col = self.column
         lexeme = ""
 
@@ -111,7 +122,6 @@ class Lexer:
         return Token(token_type, lexeme, self.line, start_col)
 
     def read_number(self) -> Token:
-        """Reads an integer or real literal."""
         start_col = self.column
         lexeme = ""
         has_decimal_point = False
@@ -122,7 +132,6 @@ class Lexer:
             if "0" <= c <= "9":
                 lexeme += c
                 self.advance()
-
             elif (
                 c == "."
                 and not has_decimal_point
@@ -132,7 +141,6 @@ class Lexer:
                 has_decimal_point = True
                 lexeme += c
                 self.advance()
-
             else:
                 break
 
@@ -141,57 +149,45 @@ class Lexer:
             if has_decimal_point
             else TokenType.INTEGER_LITERAL
         )
-
         return Token(token_type, lexeme, self.line, start_col)
 
-    def read_string(self) -> Optional[Token]:
-        """Reads a single-quoted string. Returns None if unterminated."""
+    def read_string(self, quote: str = "'") -> Optional[Token]:
+        """Lee una cadena. El cierre debe ser el mismo `quote`."""
         start_line, start_col = self.line, self.column
-        lexeme = "'"
-        self.advance()  # consume the opening quote
+        lexeme = quote
+        self.advance()
 
         while self.current_char() is not None:
             c = self.current_char()
 
-            # A string cannot span multiple lines.
             if c == "\n":
                 break
 
-            if c == "'":
+            if c == quote:
                 lexeme += c
                 self.advance()
 
-                # Two consecutive quotes represent one literal quote.
-                if self.current_char() == "'":
-                    lexeme += "'"
+                # En Pascal '' escapa una comilla; en C \" escapa.
+                if self.current_char() == quote:
+                    lexeme += quote
                     self.advance()
                     continue
 
-                # A single quote closes the string.
                 return Token(
-                    TokenType.STRING,
-                    lexeme,
-                    start_line,
-                    start_col,
+                    TokenType.STRING, lexeme, start_line, start_col,
                 )
 
             lexeme += c
             self.advance()
 
-        # Reached newline or EOF without a closing quote.
         self.errors.append({
             "line": start_line,
             "column": start_col,
             "description": "Error: unclosed string; missing closing quote",
         })
-
         return None
 
     def read_double_char_operator(self) -> Optional[Token]:
-        """Tries to recognize two-character operators (:=, <=, >=, <>, ..).
-
-        Returns the Token if there is a match, or None otherwise.
-        """
         c = self.current_char()
         line, col = self.line, self.column
 
@@ -211,20 +207,16 @@ class Lexer:
 
         return None
 
-    # ------------------------------------------------------------------
     # Main API
-    # ------------------------------------------------------------------
 
     def get_next_token(self) -> Token:
-        """Returns the next token in the stream, or an EOF token at the end."""
         while self.current_char() is not None:
 
-            # Whitespace
             if self.current_char().isspace():
                 self.skip_whitespace()
                 continue
 
-            # Single-line comment: // ...
+            # Comentario de línea // ... (válido en ambos modos)
             if self.current_char() == "/" and self.peek() == "/":
                 while (
                     self.current_char() is not None
@@ -233,34 +225,41 @@ class Lexer:
                     self.advance()
                 continue
 
-            # Block comment: { ... } or (* ... *)
-            if self.current_char() == "{" or (
-                self.current_char() == "(" and self.peek() == "*"
-            ):
-                self.skip_comment()
-                continue
+            # Comentarios de bloque según el modo
+            if self.mode == "pascal":
+                if self.current_char() == "{" or (
+                    self.current_char() == "(" and self.peek() == "*"
+                ):
+                    self.skip_block_comment_pascal()
+                    continue
+            else:  # mode == "c"
+                if self.current_char() == "/" and self.peek() == "*":
+                    self.skip_block_comment_c()
+                    continue
 
-            # Identifiers
+            # Identificadores
             if (
                 self.current_char().isascii()
                 and self.current_char().isalpha()
             ) or self.current_char() == "_":
                 return self.read_identifier()
 
-            # Numbers
+            # Números
             if "0" <= self.current_char() <= "9":
                 return self.read_number()
 
-            # Strings
-            if self.current_char() == "'":
-                token = self.read_string()
+            # Cadenas: acepta '...' y "..." en ambos modos
+            if self.current_char() in ("'", '"'):
+                quote = self.current_char()
+                token = self.read_string(quote)
                 if token is not None:
                     return token
                 continue
 
-            # Character literals: #65, #0, ...
+            # Literal de caracter Pascal #65
             if (
-                self.current_char() == "#"
+                self.mode == "pascal"
+                and self.current_char() == "#"
                 and self.peek() is not None
                 and "0" <= self.peek() <= "9"
             ):
@@ -277,7 +276,6 @@ class Lexer:
 
                 return Token(TokenType.ASCII, lexeme, line, col)
 
-            # Two-character operators
             double_char_token = self.read_double_char_operator()
             if double_char_token is not None:
                 return double_char_token
@@ -285,12 +283,10 @@ class Lexer:
             line, col = self.line, self.column
             c = self.current_char()
 
-            # Single-character operators and symbols
             if c in SINGLE_CHAR_TOKENS:
                 self.advance()
                 return Token(SINGLE_CHAR_TOKENS[c], c, line, col)
 
-            # Unknown character: record and continue
             self.errors.append({
                 "line": line,
                 "column": col,
@@ -301,13 +297,10 @@ class Lexer:
         return Token(TokenType.EOF, "EOF", self.line, self.column)
 
     def tokenize(self) -> list:
-        """Returns the full list of tokens up to and including EOF."""
         tokens = []
-
         while True:
             token = self.get_next_token()
             tokens.append(token)
             if token.type == TokenType.EOF:
                 break
-
         return tokens

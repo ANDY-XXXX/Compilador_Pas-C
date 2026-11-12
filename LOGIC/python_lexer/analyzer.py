@@ -6,8 +6,8 @@ from .symbol_table import VariableTableBuilder
 from .token_type import TokenType
 
 
-def analyze_code(source_code: str) -> dict:
-    lexer = Lexer(source_code)
+def analyze_code(source_code: str, mode: str = "pascal") -> dict:
+    lexer = Lexer(source_code, mode=mode)
     tokens = []
     warning = None
 
@@ -37,16 +37,16 @@ def analyze_code(source_code: str) -> dict:
     }
 
 
-def analyze_file(file_path: str) -> dict:
+def analyze_file(file_path: str, mode: str = "pascal") -> dict:
     with open(file_path, "r", encoding="utf-8") as file:
-        return analyze_code(file.read())
+        return analyze_code(file.read(), mode=mode)
 
 
 def main():
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
     else:
-        file_path = input("Pascal file (.pas): ")
+        file_path = input("Source file: ")
 
     result = analyze_file(file_path)
 

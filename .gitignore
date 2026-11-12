@@ -4,3 +4,5 @@
 __pycache__/
 # Ignora todos lo archivos nombrados como .venv
 .venv/
+
+.vscode

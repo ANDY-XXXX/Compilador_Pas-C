@@ -70,6 +70,8 @@ class TokenType(Enum):
     RPAREN = auto()
     LBRACKET = auto()
     RBRACKET = auto()
+    LBRACE = auto()          # {   (para modo C)
+    RBRACE = auto()          # }   (para modo C)
 
     COLON = auto()
     SEMICOLON = auto()
@@ -134,6 +136,8 @@ SINGLE_CHAR_TOKENS = {
     ")": TokenType.RPAREN,
     "[": TokenType.LBRACKET,
     "]": TokenType.RBRACKET,
+    "{": TokenType.LBRACE,
+    "}": TokenType.RBRACE,
     ":": TokenType.COLON,
     ";": TokenType.SEMICOLON,
     ",": TokenType.COMMA,
