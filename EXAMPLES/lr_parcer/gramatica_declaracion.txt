@@ -1,0 +1,20 @@
+No_Terminales: P D L V Ids Tipo
+Terminales: program var integer real char boolean begin end ; : , id .
+Inicial: P'
+
+P' -> P $
+P → program id ; D begin end .
+D → var L
+
+L → L V
+L → V
+
+V → Ids : Tipo ;
+
+Ids → Ids , id
+Ids → id
+
+Tipo → integer
+Tipo → real
+Tipo → char
+Tipo → boolean

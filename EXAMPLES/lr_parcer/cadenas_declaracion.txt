@@ -1,0 +1,4 @@
+program id ; var id : integer ; begin end .
+program id ; var id , id : real ; begin end .
+program id ; var id , id , id : integer ; id : char ; begin end .
+program id ; var id , id , id : integer ; id , id : real ; id : char ; id : boolean ; begin end .
