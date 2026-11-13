@@ -174,7 +174,7 @@ class LRParserTab(QWidget):
 
         self.source_editor = LineNumberedEditor()
         self.source_editor.setPlaceholderText(
-            "int main(){\nint a;\n}"
+            "program Ejemplo;\nvar x: integer;\nbegin\n  x := 1;\nend"
         )
         source_layout.addWidget(self.source_editor, 1)
         self.input_tabs.addTab(source_widget, "Programa fuente")
