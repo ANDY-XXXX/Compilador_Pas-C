@@ -180,11 +180,17 @@ QScrollBar::handle:vertical:hover { background: #a8b9d8; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 
-QScrollBar:horizontal { background: transparent; height: 12px; margin: 0; }
-QScrollBar::handle:horizontal {
-    background: #c4d1e8; border-radius: 6px; min-width: 24px;
+QScrollBar:horizontal {
+    background: transparent;
+    height: 14px;
+    margin: 0;
 }
-QScrollBar::handle:horizontal:hover { background: #a8b9d8; }
+QScrollBar::handle:horizontal {
+    background: #a8b9d8;
+    border-radius: 7px;
+    min-width: 40px;
+}
+QScrollBar::handle:horizontal:hover { background: #7f96bf; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
 """

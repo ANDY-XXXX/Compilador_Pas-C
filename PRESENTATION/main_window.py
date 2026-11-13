@@ -43,8 +43,6 @@ SECTIONS = [
 
 
 class SectionTab(QPushButton):
-    """Botón tipo pestaña de ribbon."""
-
     def __init__(self, label, parent=None):
         super().__init__(label, parent)
         self.setObjectName("sectionTab")

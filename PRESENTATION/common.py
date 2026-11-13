@@ -1,8 +1,11 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QComboBox, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QFileDialog, QMessageBox)
+    QHeaderView, QFileDialog, QMessageBox,
+)
 from PERSISTENCE.text_files import write_tsv
+
 
 # Ejecuta una función sin bloquear la ventana. Nunca manipula widgets.
 class Task(QThread):
@@ -19,6 +22,7 @@ class Task(QThread):
         except Exception as error:
             self.failed.emit(f'{type(error).__name__}: {error}')
 
+
 # Muestra una tabla elegida por el usuario y permite exportarla a TSV.
 # set_results recibe {titulo: [[encabezados...], [fila...], ...]}.
 class ResultsView(QWidget):
@@ -32,12 +36,29 @@ class ResultsView(QWidget):
         controls.addWidget(self.selector, 1)
         controls.addWidget(self.export_button)
         layout.addLayout(controls)
+
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(True)
+
+        # --- SCROLL FLUIDO (píxel por píxel) ---
+        self.table.setHorizontalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self.table.setVerticalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self.table.setWordWrap(False)
+
+        # Headers interactivos (ancho ajustable manualmente)
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.table.horizontalHeader().setMinimumSectionSize(60)
+        self.table.horizontalHeader().setStretchLastSection(False)
+
         layout.addWidget(self.table)
+
         self.selector.currentTextChanged.connect(self._show_table)
         self.export_button.clicked.connect(self.export)
         self.set_results({})
@@ -63,10 +84,14 @@ class ResultsView(QWidget):
         for i, row in enumerate(rows[1:]):
             for j, value in enumerate(row[:len(rows[0])]):
                 self.table.setItem(i, j, QTableWidgetItem(str(value)))
+                
+        # Ajustar al contenido sin límite de ancho
         self.table.resizeColumnsToContents()
 
     def export(self):
-        path, _ = QFileDialog.getSaveFileName(self, 'Guardar tabla', 'resultado.tsv', 'TSV (*.tsv)')
+        path, _ = QFileDialog.getSaveFileName(
+            self, 'Guardar tabla', 'resultado.tsv', 'TSV (*.tsv)'
+        )
         if path:
             try:
                 write_tsv(path, self.results[self.selector.currentText()])

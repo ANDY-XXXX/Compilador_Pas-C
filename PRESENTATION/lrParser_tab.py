@@ -33,6 +33,7 @@ TOKEN_SUFFIXES = (
     ".tokens.txt", "_tokens.txt", ".tok.txt",
     ".terminals.txt", ".tira.txt",
 )
+PROGRAM_SUFFIXES = {"."}
 
 
 def _find_stem(name, suffixes):
@@ -164,6 +165,7 @@ class LRParserTab(QWidget):
         self.open_source_button = QPushButton("Abrir código fuente")
         self.open_source_button.clicked.connect(self.open_source)
         source_controls.addWidget(self.open_source_button)
+
         self.source_mode_label = QLabel("Modo: pascal (auto)")
         self.source_mode_label.setObjectName("subheading")
         source_controls.addWidget(self.source_mode_label)
@@ -257,12 +259,24 @@ class LRParserTab(QWidget):
         self.collection = None
         self.grammar_path = None
         self.tokens_path = None
+        self.source_path = None
+
+        # Limpiar la gramática y los tokens
         self.grammar_preview.clear()
         self.tokens_editor.clear()
+        
+        # NUEVO: Limpiar el programa fuente (Pascal/C) y reiniciar el modo
+        self.source_editor.clear()
+        self.source_mode = "pascal"
+        self.source_mode_label.setText("Modo: pascal (auto)")
+
+        # Reiniciar etiquetas de estado
         self.grammar_status.setText("Gramática: (sin cargar)")
         self.tokens_status.setText("Tira de tokens: (sin cargar)")
+        
         self.analyze_button.setEnabled(False)
         self.status.setText("Caso limpiado.")
+
         if self.results_window is not None:
             self.results_window.close()
             self.results_window = None
@@ -362,7 +376,6 @@ class LRParserTab(QWidget):
         folder = _default_folder()
         path, _ = QFileDialog.getOpenFileName(
             self, "Abrir código fuente", str(folder),
-            "Código (*.pas *.c *.txt);;"
             "Pascal (*.pas);;C (*.c);;Todos (*)",
         )
         if not path:
@@ -381,7 +394,33 @@ class LRParserTab(QWidget):
             f"Modo: {self.source_mode} · {path.name}"
         )
         self.input_tabs.setCurrentIndex(0)
-        self.status.setText(f"Código fuente cargado: {path}")
+
+        # --- Auto-cargar la gramática general de Pascal ---
+        if self.source_mode == "pascal":
+            # Buscamos la gramática general en la carpeta de ejemplos
+            grammar_path = (
+                Path(__file__).resolve().parents[1] 
+                / "EXAMPLES" / "lr_parcer" / "PascalCompleto.grammar.txt"
+            )
+            
+            if grammar_path.exists():
+                # Solo cargamos si la gramática actual no es esta misma
+                if self.grammar_path != grammar_path:
+                    self.status.setText("Vinculando automáticamente la gramática general de Pascal…")
+                    self._load_grammar_file(grammar_path)
+                else:
+                    self.status.setText(
+                        f"Programa Pascal cargado. Gramática general ya vinculada. "
+                        "Listo para analizar."
+                    )
+            else:
+                self.status.setText(
+                    f"Fuente cargada: {path.name}. "
+                    "Advertencia: No se encontró PascalCompleto.grammar.txt "
+                    "en EXAMPLES/lr_parser/."
+                )
+        else:
+            self.status.setText(f"Código fuente cargado: {path}")
 
     # Tabla LR
 
