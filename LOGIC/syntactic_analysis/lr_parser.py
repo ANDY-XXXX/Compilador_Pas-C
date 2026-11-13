@@ -69,13 +69,15 @@ def _format_input(tokens, index):
 
 
 class LRParser:
-    def __init__(self, table, tokens):
+    def __init__(self, table, tokens, positions=None):
         """
         table:  LRTable ya construida.
         tokens: lista de (lexema, terminal); si no termina en '$', se agrega.
+        positions: lista opcional de (línea, columna), una por token.
         """
         self.table = table
         self.tokens = list(tokens)
+        self.positions = list(positions or [])
         if not self.tokens or self.tokens[-1][1] != "$":
             self.tokens.append(("$", "$"))
 
@@ -97,6 +99,10 @@ class LRParser:
             action = self.table.action.get((current_state, terminal))
 
             if action is None:
+                where = ""
+                if index < len(self.positions):
+                    line, column = self.positions[index]
+                    where = f"Línea {line}, columna {column}: "
                 steps.append(ParseStep(
                     step,
                     _format_stack(state_stack, symbol_stack),
@@ -105,7 +111,7 @@ class LRParser:
                 ))
                 return ParseResult(
                     accepted=False, steps=steps, derivation=derivation,
-                    error=f"No existe acción en el estado I{current_state} "
+                    error=f"{where}No existe acción en el estado I{current_state} "
                           f"para el terminal '{terminal}' (lexema '{lexeme}').",
                 )
 
@@ -184,5 +190,5 @@ class LRParser:
         )
 
 
-def parse_tokens(table, tokens):
-    return LRParser(table, tokens).parse()
+def parse_tokens(table, tokens, positions=None):
+    return LRParser(table, tokens, positions).parse()

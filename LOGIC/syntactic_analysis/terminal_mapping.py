@@ -69,6 +69,9 @@ DEFAULT_MAP = {
     "EOF": "$",
 }
 
+CATEGORY_TERMINALS = {"id", "num", "realnum", "literalCad"}
+
+
 def _type_name(token_type):
     if hasattr(token_type, "name"):
         return token_type.name
@@ -112,7 +115,14 @@ def map_token(token, terminals, custom_map=None):
         if t.lower() == lower_name:
             return t
 
-    if lexeme in terminal_set:
+    # Un identificador nunca debe tomar el nombre de un terminal de
+    # categoría (id, num, realnum, literalCad). Para lo demás se compara
+    # en minúsculas porque Pascal no distingue mayúsculas (WriteLn = writeln).
+    if name == "IDENTIFIER":
+        lower_lexeme = lexeme.lower()
+        if lower_lexeme in terminal_set and lower_lexeme not in CATEGORY_TERMINALS:
+            return lower_lexeme
+    elif lexeme in terminal_set:
         return lexeme
 
     if name in DEFAULT_MAP:
