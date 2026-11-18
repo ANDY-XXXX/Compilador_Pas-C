@@ -13,6 +13,7 @@ from .canonicalCollection_tab import CanonicalCollectionTab
 from .syntactic_table_tab import SyntacticTableTab
 from .style import STYLE
 from .lrParser_tab import LRParserTab
+from .semantic_tab import SemanticTab 
 
 
 SECTIONS = [
@@ -31,13 +32,15 @@ SECTIONS = [
             ("first_follow", "PRIMEROS y SIGUIENTES"),
             ("canonical",    "Colección canónica LR(0)"),
             ("lr_table",     "Tabla de análisis LR"),
-            ("lr_parser",    "Analizador sintáctico LR"),   # NUEVA
+            ("lr_parser",    "Analizador sintáctico LR"),
         ],
     },
     {
         "key": "semantico",
         "label": "Analizador Semántico",
-        "pages": [],
+        "pages": [
+            ("semantic", "Análisis Semántico LR"),
+        ],
     },
 ]
 
@@ -69,19 +72,8 @@ class MainWindow(QMainWindow):
             "canonical":     CanonicalCollectionTab(),
             "lr_table":      SyntacticTableTab(),
             "lr_parser":     LRParserTab(),
+            "semantic":      SemanticTab(),
         }
-
-        # Placeholder para "Semántico"
-        self.placeholder = QWidget()
-        ph_layout = QVBoxLayout(self.placeholder)
-        ph_layout.setContentsMargins(60, 60, 60, 60)
-        title = QLabel("Analizador Semántico")
-        title.setObjectName("heading")
-        hint = QLabel("Disponible en una próxima entrega.")
-        hint.setObjectName("subheading")
-        ph_layout.addWidget(title)
-        ph_layout.addWidget(hint)
-        ph_layout.addStretch()
 
         # ---------------- Contenedor raíz ----------------
         central = QWidget()
@@ -126,10 +118,10 @@ class MainWindow(QMainWindow):
         self.sidebar.setFixedWidth(240)
         self.sidebar.itemClicked.connect(self._on_sidebar_clicked)
 
+        # RESTAURADO: Creación del QStackedWidget
         self.stack = QStackedWidget()
         for page in self.pages.values():
             self.stack.addWidget(page)
-        self.stack.addWidget(self.placeholder)
 
         body_layout.addWidget(self.sidebar)
         body_layout.addWidget(self.stack, 1)
@@ -155,7 +147,8 @@ class MainWindow(QMainWindow):
 
         if not section["pages"]:
             self.sidebar.setEnabled(False)
-            self.stack.setCurrentWidget(self.placeholder)
+            # Si una sección no tiene páginas, no hacemos nada especial
+            # (ya no existe el placeholder)
         else:
             self.sidebar.setEnabled(True)
             for page_key, label in section["pages"]:
@@ -196,7 +189,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Acerca de",
             "Compilador · Equipo 6\n\n"
-            "Analizadores léxico y sintáctico · UTM",
+            "Analizadores léxico, sintáctico y semántico · UTM",
         )
 
     # ---------------- Cierre ----------------

@@ -34,6 +34,7 @@ class ParseResult:
     derivation: list = field(default_factory=list)
     tree: Optional[ParseNode] = None
     error: Optional[str] = None
+    final_value: Optional[object] = None
 
     def step_rows(self):
         rows = [["Paso", "Pila", "Entrada", "Salida"]]
@@ -69,15 +70,9 @@ def _format_input(tokens, index):
 
 
 class LRParser:
-    def __init__(self, table, tokens, positions=None):
-        """
-        table:  LRTable ya construida.
-        tokens: lista de (lexema, terminal); si no termina en '$', se agrega.
-        positions: lista opcional de (línea, columna), una por token.
-        """
+    def __init__(self, table, tokens):
         self.table = table
         self.tokens = list(tokens)
-        self.positions = list(positions or [])
         if not self.tokens or self.tokens[-1][1] != "$":
             self.tokens.append(("$", "$"))
 
@@ -99,28 +94,20 @@ class LRParser:
             action = self.table.action.get((current_state, terminal))
 
             if action is None:
-                where = ""
-                if index < len(self.positions):
-                    line, column = self.positions[index]
-                    where = f"Línea {line}, columna {column}: "
                 steps.append(ParseStep(
-                    step,
-                    _format_stack(state_stack, symbol_stack),
-                    remaining,
+                    step, _format_stack(state_stack, symbol_stack), remaining,
                     f"ERROR: sin acción para ({current_state}, '{terminal}')",
                 ))
                 return ParseResult(
                     accepted=False, steps=steps, derivation=derivation,
-                    error=f"{where}No existe acción en el estado I{current_state} "
+                    error=f"No existe acción en el estado I{current_state} "
                           f"para el terminal '{terminal}' (lexema '{lexeme}').",
                 )
 
             if action.type == ActionType.SHIFT:
                 steps.append(ParseStep(
-                    step,
-                    _format_stack(state_stack, symbol_stack),
-                    remaining,
-                    f"Desplazar a I{action.target} ('{terminal}')",
+                    step, _format_stack(state_stack, symbol_stack), remaining,
+                    f"d{action.target} : {terminal}",
                 ))
                 symbol_stack.append(terminal)
                 node_stack.append(ParseNode(terminal, is_terminal=True))
@@ -133,10 +120,8 @@ class LRParser:
                 nt = str(production.left)
 
                 steps.append(ParseStep(
-                    step,
-                    _format_stack(state_stack, symbol_stack),
-                    remaining,
-                    f"Reducir por {production}",
+                    step, _format_stack(state_stack, symbol_stack), remaining,
+                    f"r{action.production + 1} : {production}",
                 ))
                 derivation.append(str(production))
 
@@ -162,10 +147,7 @@ class LRParser:
 
             elif action.type == ActionType.ACCEPT:
                 steps.append(ParseStep(
-                    step,
-                    _format_stack(state_stack, symbol_stack),
-                    remaining,
-                    "ACEPTAR",
+                    step, _format_stack(state_stack, symbol_stack), remaining, "ACEPTAR",
                 ))
                 root = None
                 if node_stack:
@@ -174,8 +156,7 @@ class LRParser:
                     else:
                         root = ParseNode("<programa>", children=list(node_stack))
                 return ParseResult(
-                    accepted=True, steps=steps, derivation=derivation,
-                    tree=root,
+                    accepted=True, steps=steps, derivation=derivation, tree=root,
                 )
 
             else:
@@ -190,5 +171,5 @@ class LRParser:
         )
 
 
-def parse_tokens(table, tokens, positions=None):
-    return LRParser(table, tokens, positions).parse()
+def parse_tokens(table, tokens):
+    return LRParser(table, tokens).parse()
