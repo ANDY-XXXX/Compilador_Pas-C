@@ -1,7 +1,7 @@
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QPlainTextEdit, QFileDialog, QMessageBox, QSplitter
+    QPlainTextEdit, QFileDialog, QMessageBox, QSplitter, QGridLayout
 )
 from PyQt6.QtCore import Qt
 
@@ -15,6 +15,10 @@ from LOGIC.python_lexer.analyzer import analyze_code
 from LOGIC.syntactic_analysis.terminal_mapping import tokens_to_terminals
 from .common import Task
 from .results_window import ResultsWindow
+from .line_numbered_editor import LineNumberedEditor
+
+EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "EXAMPLES" / "semantic"
+
 
 def _set_rows(sets):
     return [["No terminal", "Conjunto"]] + [
@@ -22,10 +26,37 @@ def _set_rows(sets):
         for name, values in sorted(sets.items())
     ]
 
+
+def _grammar_lines(grammar):
+    """Producciones numeradas igual que en la tabla (rN = producción N)."""
+    return [f"{i + 1}. {prod}" for i, prod in enumerate(grammar.productions)]
+
+
+def _action_lines(grammar):
+    """Acción semántica de cada producción, con el mismo número."""
+    actions = getattr(grammar, "actions", {})
+    return [
+        f"{i + 1}. {{ {actions[i]} }}" if i in actions else f"{i + 1}. (sin acción)"
+        for i in range(len(grammar.productions))
+    ]
+
+
+def _source_candidates(grammar_path):
+    """Códigos de prueba de la misma gramática: Expresiones.txt, Expresiones2.txt…"""
+    stem = grammar_path.name.replace(".sem.txt", "").replace(".txt", "")
+    return sorted(
+        p for p in grammar_path.parent.glob(f"{stem}*.txt")
+        if not p.name.endswith(".sem.txt")
+    )
+
+
 class SemanticTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.grammar = None
+        self.grammar_text = ""
+        self.grammar_path = None
+        self.source_path = None
         self.table = None
         self.first = None
         self.follow = None
@@ -40,32 +71,60 @@ class SemanticTab(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        controls = QHBoxLayout()
-        self.btn_load_grammar = QPushButton("Cargar Gramática (.sem)")
+        # --- Selección de archivos (con la ruta seleccionada) ---
+        files = QGridLayout()
+        self.btn_load_grammar = QPushButton("Abrir gramática y acciones")
         self.btn_load_grammar.clicked.connect(self.load_grammar)
-        controls.addWidget(self.btn_load_grammar)
+        self.grammar_label = QLabel("Ninguna gramática seleccionada")
+        self.grammar_label.setObjectName("subheading")
+        files.addWidget(QLabel("Gramática:"), 0, 0)
+        files.addWidget(self.btn_load_grammar, 0, 1)
+        files.addWidget(self.grammar_label, 0, 2)
 
-        self.btn_load_source = QPushButton("Cargar Código Fuente")
+        self.btn_load_source = QPushButton("Abrir código fuente")
         self.btn_load_source.clicked.connect(self.load_source)
-        controls.addWidget(self.btn_load_source)
+        self.source_label = QLabel("Ningún código seleccionado (también puedes escribirlo)")
+        self.source_label.setObjectName("subheading")
+        files.addWidget(QLabel("Código fuente:"), 1, 0)
+        files.addWidget(self.btn_load_source, 1, 1)
+        files.addWidget(self.source_label, 1, 2)
+        files.setColumnStretch(2, 1)
+        layout.addLayout(files)
 
+        controls = QHBoxLayout()
         self.btn_analyze = QPushButton("Ejecutar Análisis Semántico")
         self.btn_analyze.setEnabled(False)
         self.btn_analyze.clicked.connect(self.analyze)
         controls.addWidget(self.btn_analyze)
+
+        self.btn_clear_run = QPushButton("Limpiar corrida")
+        self.btn_clear_run.setObjectName("secondary")
+        self.btn_clear_run.clicked.connect(self.clear_run)
+        controls.addWidget(self.btn_clear_run)
+
+        self.btn_clear_all = QPushButton("Limpiar todo")
+        self.btn_clear_all.setObjectName("secondary")
+        self.btn_clear_all.clicked.connect(self.clear_all)
+        controls.addWidget(self.btn_clear_all)
         controls.addStretch()
         layout.addLayout(controls)
 
+        # --- Gramática | Acciones semánticas | Programa fuente ---
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         self.grammar_view = QPlainTextEdit()
         self.grammar_view.setReadOnly(True)
-        self.grammar_view.setPlaceholderText("Gramática y acciones semánticas...")
-        splitter.addWidget(self.grammar_view)
+        self.grammar_view.setPlaceholderText("Gramática (producciones numeradas)...")
+        splitter.addWidget(self._panel("Gramática", self.grammar_view))
 
-        self.source_view = QPlainTextEdit()
-        self.source_view.setPlaceholderText("Programa fuente (ej. 2+3*4)...")
-        splitter.addWidget(self.source_view)
+        self.actions_view = QPlainTextEdit()
+        self.actions_view.setReadOnly(True)
+        self.actions_view.setPlaceholderText("Acciones semánticas de cada producción...")
+        splitter.addWidget(self._panel("Acciones semánticas", self.actions_view))
+
+        self.source_view = LineNumberedEditor()
+        self.source_view.setPlaceholderText("Programa fuente (ej. 2 + 3 * 4)...")
+        splitter.addWidget(self._panel("Programa fuente", self.source_view))
 
         layout.addWidget(splitter, 1)
 
@@ -73,37 +132,81 @@ class SemanticTab(QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+    @staticmethod
+    def _panel(title, widget):
+        panel = QWidget()
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(title)
+        label.setObjectName("subheading")
+        panel_layout.addWidget(label)
+        panel_layout.addWidget(widget, 1)
+        return panel
+
     @property
     def busy(self): return self.task is not None
 
     def load_grammar(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Gramática Semántica", 
-            str(Path(__file__).resolve().parents[1] / "EXAMPLES" / "semantic"),
-            "Texto (*.txt *.sem);;Todos (*)"
+            self, "Abrir Gramática Semántica", str(EXAMPLES_DIR),
+            "Gramática semántica (*.sem.txt);;Texto (*.txt);;Todos (*)"
         )
         if not path: return
         try:
             text = read_text(path)
             self.grammar = SemanticGrammarReader.from_text(text)
-            self.grammar_view.setPlainText(text)
+            self.grammar_text = text
+            self.grammar_path = Path(path)
+            self.grammar_view.setPlainText("\n".join(_grammar_lines(self.grammar)))
+            self.actions_view.setPlainText("\n".join(_action_lines(self.grammar)))
+            self.grammar_label.setText(str(self.grammar_path))
             self._build_table()
-            self.status.setText(f"Gramática cargada: {Path(path).name}")
+
+            # Si existe un código de prueba con el mismo nombre, se carga solo.
+            candidates = _source_candidates(self.grammar_path)
+            if candidates and not self.source_view.toPlainText().strip():
+                self._set_source(candidates[0])
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Error al leer gramática:\n{e}")
 
     def load_source(self):
+        start = str(self.grammar_path.parent if self.grammar_path else EXAMPLES_DIR)
         path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Código", 
-            str(Path(__file__).resolve().parents[1] / "EXAMPLES" / "semantic"),
-            "Texto (*.txt *.pas);;Todos (*)"
+            self, "Abrir Código", start, "Texto (*.txt *.pas);;Todos (*)"
         )
         if not path: return
         try:
-            text = read_text(path)
-            self.source_view.setPlainText(text)
+            self._set_source(Path(path))
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
+
+    def _set_source(self, path):
+        self.source_view.setPlainText(read_text(path))
+        self.source_path = path
+        self.source_label.setText(str(path))
+
+    def clear_run(self):
+        if self.results_window is not None:
+            self.results_window.close()
+            self.results_window = None
+        if self.table:
+            self.status.setText("Corrida limpia. Puedes volver a analizar.")
+
+    def clear_all(self):
+        if self.busy: return
+        self.clear_run()
+        self.grammar = None
+        self.grammar_text = ""
+        self.grammar_path = None
+        self.source_path = None
+        self.table = self.first = self.follow = self.collection = None
+        self.grammar_view.clear()
+        self.actions_view.clear()
+        self.source_view.clear()
+        self.grammar_label.setText("Ninguna gramática seleccionada")
+        self.source_label.setText("Ningún código seleccionado (también puedes escribirlo)")
+        self.btn_analyze.setEnabled(False)
+        self.status.setText("Carga una gramática semántica para comenzar.")
 
     def _build_table(self):
         if not self.grammar: return
@@ -126,7 +229,10 @@ class SemanticTab(QWidget):
     def _on_table_built(self, payload):
         self.first, self.follow, self.collection, self.table = payload
         self.btn_analyze.setEnabled(True)
-        self.status.setText(f"Tabla lista. {len(self.table.conflicts)} conflictos.")
+        name = self.grammar_path.name if self.grammar_path else "gramática"
+        conflicts = len(self.table.conflicts)
+        note = "" if not conflicts else " (se resuelven desplazando; revisa la pestaña Conflictos)"
+        self.status.setText(f"{name}: tabla lista con {conflicts} conflicto(s){note}.")
 
     def analyze(self):
         code = self.source_view.toPlainText().strip()
@@ -141,16 +247,16 @@ class SemanticTab(QWidget):
         self.task.start()
 
     def _run(self, code):
-        grammar_text = self.grammar_view.toPlainText()
-        
-        # 1. Tokenizar
+        # 1. Tokenizar (con valor léxico y posición de cada token)
         lex_res = analyze_code(code, mode="pascal")
+        raw_tokens = [t for t in lex_res["tokens"] if t.type.name != "EOF"]
         mapped = tokens_to_terminals(lex_res["tokens"], self.grammar.terminals)
-        
+        positions = [(t.line, t.column) for t in raw_tokens]
+
         # 2. Ejecutar Parser Semántico
-        parser = SemanticParser(self.table, mapped)
+        parser = SemanticParser(self.table, mapped, positions)
         parse_res = parser.parse()
-        
+
         # 3. Formatear salida
         state_rows = [["Estado", "Ítem"]]
         for i, state in enumerate(self.collection.states):
@@ -162,13 +268,36 @@ class SemanticTab(QWidget):
             accepting = "Sí" if target in self.collection.acceptation else ""
             transition_rows.append([f"I{origin}", str(symbol), f"I{target}", accepting])
 
-        # Asegurar que la UI muestre el $ al final de la tira de tokens
-        mapped_ui = list(mapped)
-        if not mapped_ui or mapped_ui[-1][1] != "$":
-            mapped_ui.append(("$", "$"))
+        token_rows = [["Línea", "Lexema", "Token", "Terminal", "Valor léxico"]]
+        for token, (lexeme, terminal) in zip(raw_tokens, mapped):
+            valex = lexeme if lexeme != terminal else ""
+            token_rows.append([token.line, lexeme, token.type.name, terminal, valex])
+        token_rows.append(["", "$", "EOF", "$", ""])
+
+        error_rows = [["Tipo", "Línea", "Descripción"]]
+        for err in lex_res["errors"]:
+            error_rows.append(["Léxico", err["line"], err["description"]])
+        for err in parser.semantic_errors:
+            error_rows.append(["Semántico", "", err])
+        if not parse_res.accepted:
+            error_rows.append(["Sintáctico", "", parse_res.error])
+
+        if parse_res.accepted:
+            result_rows = [["Resultado (traducción / evaluación)"], [str(parse_res.final_value)]]
+        else:
+            result_rows = [["Error"], [str(parse_res.error)]]
 
         results = {
-            "Gramática y Acciones": [["Línea", "Contenido"]] + [[i+1, line] for i, line in enumerate(grammar_text.splitlines())],
+            "Corrida Semántica (Pila)": parse_res.step_rows(),
+            "Resultado Evaluado": result_rows,
+            "Derivación": parse_res.derivation_rows(),
+            "Árbol": parse_res.tree_rows(),
+            "Tira de Tokens": token_rows,
+            "Tabla de errores": error_rows,
+            "Gramática": [["#", "Producción"]] + [
+                line.split(". ", 1) for line in _grammar_lines(self.grammar)],
+            "Acciones semánticas": [["#", "Acción"]] + [
+                line.split(". ", 1) for line in _action_lines(self.grammar)],
             "Programa Fuente": [["Línea", "Código"]] + [[i+1, line] for i, line in enumerate(code.splitlines())],
             "PRIMEROS": _set_rows(self.first),
             "SIGUIENTES": _set_rows(self.follow),
@@ -177,18 +306,11 @@ class SemanticTab(QWidget):
             "Tabla unificada": self.table.combined_rows(),
             "ACTION": self.table.action_rows(),
             "GOTO": self.table.goto_rows(),
-            "Tira de Tokens": [["Lexema", "Terminal"]] + [[lex, term] for lex, term in mapped_ui],
-            "Corrida Semántica (Pila)": parse_res.step_rows()
         }
-        
+
         if self.table.conflicts:
             results["Conflictos"] = self.table.conflict_rows()
-            
-        if parse_res.accepted:
-            results["Resultado Evaluado"] = [["Valor Final"], [str(parse_res.final_value)]]
-        else:
-            results["Resultado Evaluado"] = [["Error"], [str(parse_res.error)]]
-            
+
         return results
 
     def _show_results(self, results):
@@ -197,7 +319,7 @@ class SemanticTab(QWidget):
             self.results_window.show()
         else:
             self.results_window.update_results(results)
-        
+
         self.status.setText("Análisis semántico terminado. Revisa la ventana de resultados.")
         self.btn_analyze.setEnabled(True)
 
