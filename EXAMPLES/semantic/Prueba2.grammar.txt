@@ -1,0 +1,9 @@
+No_Terminales: D T L
+Terminales: int float id , ; $
+Inicial: D
+
+D -> T L ; { D.v = T.v + " " + L.v + ";" }
+T -> int { T.v = "int" }
+T -> float { T.v = "float" }
+L -> id { L.v = id.valex }
+L -> id , L { L0.v = id.valex + ", " + L1.v }

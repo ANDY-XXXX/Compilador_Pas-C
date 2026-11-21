@@ -1,9 +1,0 @@
-No_Terminales: S' S T V L
-Terminales: id ; int float , $
-Inicial: S'
-S' -> S $
-S -> T V ; { S0.v = "Declarado" }
-T -> int { T0.v = "int" }
-T -> float { T.v = "float" }
-V -> id { V0.v = id.valex }
-V -> id , V { V.v = id.valex + "," + V.v }

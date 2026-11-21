@@ -1,0 +1,8 @@
+No_Terminales: S T V
+Terminales: int float id [ nint ] ; $
+Inicial: S
+
+S -> T V ; { S.v = T.v + " " + V.v + ";" }
+T -> int { T.v = "int" }
+T -> float { T.v = "float" }
+V -> id [ nint ] { V.v = id.valex + "[" + str(nint.valex) + "]" }

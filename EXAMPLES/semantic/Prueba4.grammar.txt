@@ -1,0 +1,8 @@
+No_Terminales: E T
+Terminales: + id nint $
+Inicial: E
+
+E -> E + T { E0.v = E1.v + " + " + T.v }
+E -> T { E0.v = T.v }
+T -> id { T.v = id.valex }
+T -> nint { T.v = str(nint.valex) }

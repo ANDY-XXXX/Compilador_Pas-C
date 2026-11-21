@@ -1,7 +1,8 @@
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QPlainTextEdit, QFileDialog, QMessageBox, QSplitter, QGridLayout
+    QPlainTextEdit, QFileDialog, QMessageBox, QSplitter, QGridLayout,
+    QComboBox, QGroupBox
 )
 from PyQt6.QtCore import Qt
 
@@ -28,12 +29,10 @@ def _set_rows(sets):
 
 
 def _grammar_lines(grammar):
-    """Producciones numeradas igual que en la tabla (rN = producción N)."""
     return [f"{i + 1}. {prod}" for i, prod in enumerate(grammar.productions)]
 
 
 def _action_lines(grammar):
-    """Acción semántica de cada producción, con el mismo número."""
     actions = getattr(grammar, "actions", {})
     return [
         f"{i + 1}. {{ {actions[i]} }}" if i in actions else f"{i + 1}. (sin acción)"
@@ -42,11 +41,12 @@ def _action_lines(grammar):
 
 
 def _source_candidates(grammar_path):
-    """Códigos de prueba de la misma gramática: Expresiones.txt, Expresiones2.txt…"""
-    stem = grammar_path.name.replace(".sem.txt", "").replace(".txt", "")
+    """Busca el código fuente pareja: Prueba1.grammar.txt -> Prueba1.ProFuente.txt"""
+    # Limpiamos el nombre para obtener solo el prefijo (ej. "Prueba1")
+    stem = grammar_path.name.replace(".grammar.txt", "").replace(".sem.txt", "").replace(".txt", "")
     return sorted(
-        p for p in grammar_path.parent.glob(f"{stem}*.txt")
-        if not p.name.endswith(".sem.txt")
+        p for p in grammar_path.parent.glob(f"{stem}*")
+        if not p.name.endswith(".grammar.txt") and not p.name.endswith(".sem.txt") and p.suffix in (".txt", ".pas")
     )
 
 
@@ -71,9 +71,32 @@ class SemanticTab(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        # --- Selección de archivos (con la ruta seleccionada) ---
+        # ==========================================================
+        # NUEVO: Acceso rápido a pruebas (ComboBox)
+        # ==========================================================
+        test_group = QGroupBox("Acceso rápido a pruebas")
+        test_layout = QHBoxLayout(test_group)
+        
+        self.test_combo = QComboBox()
+        self.test_combo.setMinimumWidth(300)
+        self.test_combo.currentIndexChanged.connect(self._on_test_selected)
+        
+        self.btn_refresh = QPushButton("Actualizar lista")
+        self.btn_refresh.setObjectName("secondary")
+        self.btn_refresh.clicked.connect(self._refresh_test_cases)
+        
+        test_layout.addWidget(QLabel("Selecciona un caso:"))
+        test_layout.addWidget(self.test_combo, 1)
+        test_layout.addWidget(self.btn_refresh)
+        layout.addWidget(test_group)
+        
+        # Llenar el combo al iniciar
+        self._refresh_test_cases()
+        # ==========================================================
+
+        # --- Selección manual de archivos ---
         files = QGridLayout()
-        self.btn_load_grammar = QPushButton("Abrir gramática y acciones")
+        self.btn_load_grammar = QPushButton("Abrir otra gramática")
         self.btn_load_grammar.clicked.connect(self.load_grammar)
         self.grammar_label = QLabel("Ninguna gramática seleccionada")
         self.grammar_label.setObjectName("subheading")
@@ -81,7 +104,7 @@ class SemanticTab(QWidget):
         files.addWidget(self.btn_load_grammar, 0, 1)
         files.addWidget(self.grammar_label, 0, 2)
 
-        self.btn_load_source = QPushButton("Abrir código fuente")
+        self.btn_load_source = QPushButton("Abrir otro código")
         self.btn_load_source.clicked.connect(self.load_source)
         self.source_label = QLabel("Ningún código seleccionado (también puedes escribirlo)")
         self.source_label.setObjectName("subheading")
@@ -109,7 +132,6 @@ class SemanticTab(QWidget):
         controls.addStretch()
         layout.addLayout(controls)
 
-        # --- Gramática | Acciones semánticas | Programa fuente ---
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self.grammar_view = QPlainTextEdit()
@@ -146,28 +168,64 @@ class SemanticTab(QWidget):
     @property
     def busy(self): return self.task is not None
 
-    def load_grammar(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Gramática Semántica", str(EXAMPLES_DIR),
-            "Gramática semántica (*.sem.txt);;Texto (*.txt);;Todos (*)"
-        )
-        if not path: return
+    # ==========================================================
+    # NUEVOS MÉTODOS: Lógica del ComboBox
+    # ==========================================================
+    def _refresh_test_cases(self):
+        """Escanea la carpeta y llena el ComboBox con las gramáticas disponibles."""
+        self.test_combo.blockSignals(True)
+        self.test_combo.clear()
+        self.test_combo.addItem("--- Seleccionar prueba ---", None)
+        
+        if EXAMPLES_DIR.exists():
+            # Busca archivos que terminen en .grammar.txt o .sem.txt
+            for p in sorted(EXAMPLES_DIR.glob("*.txt")):
+                if p.name.endswith(".grammar.txt") or p.name.endswith(".sem.txt"):
+                    self.test_combo.addItem(p.name, p)
+                    
+        self.test_combo.blockSignals(False)
+
+    def _on_test_selected(self, index):
+        """Cuando el usuario elige del combo, carga gramática y fuente."""
+        if index <= 0: return
+        path = self.test_combo.itemData(index)
+        if path:
+            self._load_test_case(path)
+
+    def _load_test_case(self, grammar_path):
         try:
-            text = read_text(path)
+            text = read_text(grammar_path)
             self.grammar = SemanticGrammarReader.from_text(text)
             self.grammar_text = text
-            self.grammar_path = Path(path)
+            self.grammar_path = Path(grammar_path)
+            
             self.grammar_view.setPlainText("\n".join(_grammar_lines(self.grammar)))
             self.actions_view.setPlainText("\n".join(_action_lines(self.grammar)))
             self.grammar_label.setText(str(self.grammar_path))
             self._build_table()
 
-            # Si existe un código de prueba con el mismo nombre, se carga solo.
+            # Auto-cargar el código fuente
             candidates = _source_candidates(self.grammar_path)
-            if candidates and not self.source_view.toPlainText().strip():
+            if candidates:
                 self._set_source(candidates[0])
+            else:
+                self.source_view.clear()
+                self.source_path = None
+                self.source_label.setText("No se encontró archivo ProFuente pareja (ej. Prueba1.ProFuente.txt).")
+                
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Error al leer gramática:\n{e}")
+
+    # ==========================================================
+
+    def load_grammar(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Abrir Gramática Semántica", str(EXAMPLES_DIR),
+            "Gramática semántica (*.grammar.txt *.sem.txt);;Texto (*.txt);;Todos (*)"
+        )
+        if not path: return
+        self.test_combo.setCurrentIndex(0) # Quitar selección del combo
+        self._load_test_case(Path(path))
 
     def load_source(self):
         start = str(self.grammar_path.parent if self.grammar_path else EXAMPLES_DIR)
@@ -206,6 +264,7 @@ class SemanticTab(QWidget):
         self.grammar_label.setText("Ninguna gramática seleccionada")
         self.source_label.setText("Ningún código seleccionado (también puedes escribirlo)")
         self.btn_analyze.setEnabled(False)
+        self.test_combo.setCurrentIndex(0)
         self.status.setText("Carga una gramática semántica para comenzar.")
 
     def _build_table(self):
@@ -231,7 +290,7 @@ class SemanticTab(QWidget):
         self.btn_analyze.setEnabled(True)
         name = self.grammar_path.name if self.grammar_path else "gramática"
         conflicts = len(self.table.conflicts)
-        note = "" if not conflicts else " (se resuelven desplazando; revisa la pestaña Conflictos)"
+        note = "" if not conflicts else " (se resuelven desplazando; revisa Conflictos)"
         self.status.setText(f"{name}: tabla lista con {conflicts} conflicto(s){note}.")
 
     def analyze(self):
@@ -247,17 +306,14 @@ class SemanticTab(QWidget):
         self.task.start()
 
     def _run(self, code):
-        # 1. Tokenizar (con valor léxico y posición de cada token)
         lex_res = analyze_code(code, mode="pascal")
         raw_tokens = [t for t in lex_res["tokens"] if t.type.name != "EOF"]
         mapped = tokens_to_terminals(lex_res["tokens"], self.grammar.terminals)
         positions = [(t.line, t.column) for t in raw_tokens]
 
-        # 2. Ejecutar Parser Semántico
         parser = SemanticParser(self.table, mapped, positions)
         parse_res = parser.parse()
 
-        # 3. Formatear salida
         state_rows = [["Estado", "Ítem"]]
         for i, state in enumerate(self.collection.states):
             for item in state:
